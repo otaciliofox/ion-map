@@ -26,13 +26,13 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
               <HeartPulse className="w-4 h-4 animate-heartbeat" />
-              Salve vidas perto de voc├¬
+              Salve vidas perto de você
             </div>
 
             {/* Heading */}
             <div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
-                Onde est├í o{' '}
+                Onde está o{' '}
                 <span
                   className="text-transparent bg-clip-text"
                   style={{ backgroundImage: 'var(--gradient-cta)' }}
@@ -40,11 +40,11 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
                   DEA i.on
                 </span>
                 <br />
-                mais pr├│ximo?
+                mais próximo?
               </h1>
               <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-lg">
-                Localize estabelecimentos com desfibrilador DEA verificado pr├│ximos a voc├¬.
-                Em uma emerg├¬ncia card├¡aca, cada segundo conta.
+                Localize estabelecimentos com desfibrilador DEA verificado próximos a você.
+                Em uma emergência cardíaca, cada segundo conta.
               </p>
             </div>
 
@@ -88,10 +88,10 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
                 <HeartPulse className="w-10 h-10 text-primary-foreground" />
               </div>
               <h3 className="text-xl font-bold text-foreground mb-2">DEA i.on</h3>
-              <p className="text-sm text-muted-foreground mb-6">Desfibrilador Externo Autom├ítico</p>
+              <p className="text-sm text-muted-foreground mb-6">Desfibrilador Externo Automático</p>
               <div className="space-y-3">
                 {[
-                  { icon: ShieldCheck, text: 'Certificado ANVISA ÔÇö uso leigo' },
+                  { icon: ShieldCheck, text: 'Certificado ANVISA — uso leigo' },
                   { icon: HeartPulse, text: 'Feedback de RCP com display' },
                   { icon: MapPin, text: 'Verificado e ativo no mapa' },
                 ].map(({ icon: Icon, text }) => (
