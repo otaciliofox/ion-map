@@ -33,9 +33,27 @@ interface FormValues {
 interface FormErrors { [key: string]: string }
 interface PhotoState { file: File | null; preview: string | null; error: string | null }
 interface NominatimResult { lat: string; lon: string }
+interface NominatimReverseResult {
+  address?: {
+    road?: string; house_number?: string; suburb?: string; neighbourhood?: string
+    city?: string; town?: string; village?: string; municipality?: string
+    state?: string; postcode?: string
+  }
+}
 
 const BLANK: FormValues = { name: '', description: '', phone: '', email: '', address: '', city: '', state: '', zip_code: '' }
 const NO_PHOTO: PhotoState = { file: null, preview: null, error: null }
+
+// Map BR state names to codes
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM', 'bahia': 'BA',
+  'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES', 'goias': 'GO',
+  'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG',
+  'para': 'PA', 'paraiba': 'PB', 'parana': 'PR', 'pernambuco': 'PE', 'piaui': 'PI',
+  'rio de janeiro': 'RJ', 'rio grande do norte': 'RN', 'rio grande do sul': 'RS',
+  'rondonia': 'RO', 'roraima': 'RR', 'santa catarina': 'SC', 'sao paulo': 'SP',
+  'sergipe': 'SE', 'tocantins': 'TO',
+}
 
 export default function NovoEstabelecimentoPage() {
   const { user, loading } = useAuth()
@@ -47,6 +65,7 @@ export default function NovoEstabelecimentoPage() {
   const [submitting, setSubmitting] = useState(false)
   const [geoLoading, setGeoLoading] = useState(false)
   const [geocoding, setGeocoding] = useState(false)
+  const [reverseGeocoding, setReverseGeocoding] = useState(false)
   const [placePhoto, setPlacePhoto] = useState<PhotoState>(NO_PHOTO)
   const [equipPhoto, setEquipPhoto] = useState<PhotoState>(NO_PHOTO)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -67,6 +86,47 @@ export default function NovoEstabelecimentoPage() {
     } catch { /* silent */ } finally { setGeocoding(false) }
   }, [])
 
+  // Reverse geocoding: coordinates -> address fields
+  const reverseGeocode = useCallback(async (newLat: number, newLng: number) => {
+    setReverseGeocoding(true)
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLat}&lon=${newLng}&addressdetails=1`,
+        { headers: { 'Accept-Language': 'pt-BR' } }
+      )
+      const data = await res.json() as NominatimReverseResult
+      if (data.address) {
+        const a = data.address
+        const road = a.road ?? ''
+        const houseNumber = a.house_number ?? ''
+        const suburb = a.suburb ?? a.neighbourhood ?? ''
+        const addressStr = [road, houseNumber, suburb].filter(Boolean).join(', ')
+        const cityStr = a.city ?? a.town ?? a.village ?? a.municipality ?? ''
+        const zipStr = a.postcode?.replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2') ?? ''
+
+        // Map state name to code
+        const stateRaw = (a.state ?? '').toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        const stateCode = STATE_NAME_TO_CODE[stateRaw] ?? ''
+
+        setForm(prev => ({
+          ...prev,
+          ...(addressStr ? { address: addressStr } : {}),
+          ...(cityStr ? { city: cityStr } : {}),
+          ...(zipStr ? { zip_code: zipStr } : {}),
+          ...(stateCode ? { state: stateCode } : {}),
+        }))
+      }
+    } catch { /* silent */ } finally { setReverseGeocoding(false) }
+  }, [])
+
+  // Called when user clicks/drags on the mini-map
+  const handleMapLocationChange = useCallback((newLat: number, newLng: number) => {
+    setLat(newLat)
+    setLng(newLng)
+    reverseGeocode(newLat, newLng)
+  }, [reverseGeocode])
+
   function setField(field: keyof FormValues, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }))
@@ -81,7 +141,12 @@ export default function NovoEstabelecimentoPage() {
     if (!navigator.geolocation) { setErrors(p => ({ ...p, geo: 'Geolocalizacao nao suportada.' })); return }
     setGeoLoading(true)
     navigator.geolocation.getCurrentPosition(
-      p => { setLat(p.coords.latitude); setLng(p.coords.longitude); setGeoLoading(false) },
+      p => {
+        setLat(p.coords.latitude)
+        setLng(p.coords.longitude)
+        setGeoLoading(false)
+        reverseGeocode(p.coords.latitude, p.coords.longitude)
+      },
       () => { setErrors(p => ({ ...p, geo: 'Nao foi possivel obter localizacao.' })); setGeoLoading(false) }
     )
   }
@@ -217,11 +282,16 @@ export default function NovoEstabelecimentoPage() {
                     <CheckCircle2 className="w-3 h-3 text-green-500" />{lat.toFixed(4)}, {lng.toFixed(4)}
                   </span>
                 )}
-                {geocoding && <span className="text-xs text-muted-foreground animate-pulse">Geocodificando...</span>}
+                {(geocoding || reverseGeocoding) && (
+                  <span className="text-xs text-muted-foreground animate-pulse flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {reverseGeocoding ? 'Obtendo endereço...' : 'Geocodificando...'}
+                  </span>
+                )}
               </div>
               {errors.geo && <Err msg={errors.geo} />}
               <div className="rounded-xl overflow-hidden border border-border">
-                <MiniMap lat={lat} lng={lng} />
+                <MiniMap lat={lat} lng={lng} onLocationChange={handleMapLocationChange} />
               </div>
             </CardContent>
           </Card>

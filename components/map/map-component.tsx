@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import type { Establishment } from '@/lib/types'
 import { MapPin, Phone, Navigation, Search, X } from 'lucide-react'
@@ -13,14 +13,20 @@ const activeIcon = L.icon({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
 })
-
 const userIcon = L.icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
 })
-
 L.Marker.prototype.options.icon = activeIcon
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 interface FlyToProps { lat: number; lng: number; zoom?: number }
 function FlyTo({ lat, lng, zoom = 14 }: FlyToProps) {
@@ -29,23 +35,60 @@ function FlyTo({ lat, lng, zoom = 14 }: FlyToProps) {
   return null
 }
 
-function LocationMarker() {
+interface LocationMarkerProps {
+  establishments: Establishment[]
+  onLocated: (lat: number, lng: number) => void
+}
+function LocationMarker({ establishments, onLocated }: LocationMarkerProps) {
   const [pos, setPos] = useState<L.LatLng | null>(null)
   const map = useMap()
+
   useEffect(() => {
-    map.locate({ setView: false, maxZoom: 14 })
-    map.on('locationfound', (e) => { setPos(e.latlng); map.flyTo(e.latlng, 14) })
+    map.locate({ setView: false, maxZoom: 16 })
+    map.on('locationfound', (e) => {
+      setPos(e.latlng)
+      onLocated(e.latlng.lat, e.latlng.lng)
+
+      // Fly to nearest establishment if within 50km, otherwise to user
+      const active = establishments.filter(est => est.status === 'active' && est.latitude && est.longitude)
+      if (active.length > 0) {
+        const nearest = active.reduce((best, est) => {
+          const d = haversineKm(e.latlng.lat, e.latlng.lng, est.latitude, est.longitude)
+          const dBest = haversineKm(e.latlng.lat, e.latlng.lng, best.latitude, best.longitude)
+          return d < dBest ? est : best
+        })
+        const distKm = haversineKm(e.latlng.lat, e.latlng.lng, nearest.latitude, nearest.longitude)
+        if (distKm <= 50) {
+          // Fly to midpoint between user and nearest establishment
+          const midLat = (e.latlng.lat + nearest.latitude) / 2
+          const midLng = (e.latlng.lng + nearest.longitude) / 2
+          map.flyTo([midLat, midLng], 13, { duration: 1.5 })
+        } else {
+          map.flyTo(e.latlng, 13, { duration: 1.5 })
+        }
+      } else {
+        map.flyTo(e.latlng, 13, { duration: 1.5 })
+      }
+    })
+    map.on('locationerror', () => { /* silently ignore — user denied or unavailable */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map])
-  return pos ? <Marker position={pos} icon={userIcon}><Popup><p className="font-medium text-sm">Você está aqui</p></Popup></Marker> : null
+
+  return pos ? (
+    <Marker position={pos} icon={userIcon}>
+      <Popup><p className="font-medium text-sm">Você está aqui</p></Popup>
+    </Marker>
+  ) : null
 }
 
 interface MapComponentProps { establishments: Establishment[] }
 
 export function MapComponent({ establishments }: MapComponentProps) {
   const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number } | null>(null)
+  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
-  const [locate, setLocate] = useState(false)
+  const [autoLocate] = useState(true) // always try geolocation on mount
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function searchCity() {
@@ -55,12 +98,16 @@ export function MapComponent({ establishments }: MapComponentProps) {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=br&limit=1`
       )
-      const data = await res.json()
+      const data = await res.json() as Array<{ lat: string; lon: string }>
       if (data[0]) setFlyTarget({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) })
     } finally {
       setSearching(false)
     }
   }
+
+  const handleLocated = useCallback((lat: number, lng: number) => {
+    setUserPos({ lat, lng })
+  }, [])
 
   return (
     <div className="relative w-full h-full">
@@ -85,7 +132,12 @@ export function MapComponent({ establishments }: MapComponentProps) {
         <Button size="sm" onClick={searchCity} disabled={searching} className="shadow-md shrink-0">
           {searching ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Buscar'}
         </Button>
-        <Button size="icon" variant="outline" onClick={() => setLocate(l => !l)} className="shadow-md shrink-0 bg-background/95" title="Minha localização">
+        <Button
+          size="icon" variant="outline"
+          onClick={() => setFlyTarget(userPos ?? { lat: -15.7801, lng: -47.9292 })}
+          className="shadow-md shrink-0 bg-background/95"
+          title="Minha localização"
+        >
           <Navigation className="w-4 h-4" />
         </Button>
       </div>
@@ -100,7 +152,12 @@ export function MapComponent({ establishments }: MapComponentProps) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {locate && <LocationMarker />}
+
+        {/* Auto-locate on mount */}
+        {autoLocate && (
+          <LocationMarker establishments={establishments} onLocated={handleLocated} />
+        )}
+
         {flyTarget && <FlyTo lat={flyTarget.lat} lng={flyTarget.lng} />}
 
         {establishments.filter(e => e.status === 'active').map(est => (
@@ -125,8 +182,7 @@ export function MapComponent({ establishments }: MapComponentProps) {
                   />
                 )}
                 <Button
-                  size="sm"
-                  className="w-full gap-1 text-xs"
+                  size="sm" className="w-full gap-1 text-xs"
                   onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${est.latitude},${est.longitude}`, '_blank')}
                 >
                   <Navigation className="w-3 h-3" /> Ver Rota
