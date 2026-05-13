@@ -26,13 +26,13 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
               <HeartPulse className="w-4 h-4 animate-heartbeat" />
-              Salve vidas perto de você
+              Salve vidas perto de voc├¬
             </div>
 
             {/* Heading */}
             <div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
-                Onde está o{' '}
+                Onde est├í o{' '}
                 <span
                   className="text-transparent bg-clip-text"
                   style={{ backgroundImage: 'var(--gradient-cta)' }}
@@ -40,24 +40,24 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
                   DEA i.on
                 </span>
                 <br />
-                mais próximo?
+                mais pr├│ximo?
               </h1>
               <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-lg">
-                Localize estabelecimentos com desfibrilador DEA verificado próximos a você.
-                Em uma emergência cardíaca, cada segundo conta.
+                Localize estabelecimentos com desfibrilador DEA verificado pr├│ximos a voc├¬.
+                Em uma emerg├¬ncia card├¡aca, cada segundo conta.
               </p>
             </div>
 
             {/* CTAs */}
-            <div className="flex flex-wrap gap-4">
-              <a href="#mapa">
-                <Button size="lg" className="gap-2 shadow-lg hover:shadow-xl transition-shadow">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <a href="#mapa" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto gap-2 shadow-lg hover:shadow-xl transition-shadow">
                   <MapPin className="w-5 h-5" />
                   Ver no Mapa
                 </Button>
               </a>
-              <a href="#produto">
-                <Button variant="outline" size="lg" className="gap-2">
+              <a href="#produto" className="w-full sm:w-auto">
+                <Button variant="outline" size="lg" className="w-full sm:w-auto gap-2">
                   Conhecer o DEA i.on
                   <ArrowRight className="w-4 h-4" />
                 </Button>
@@ -88,10 +88,10 @@ export function HeroSection({ totalActive, totalCities }: HeroSectionProps) {
                 <HeartPulse className="w-10 h-10 text-primary-foreground" />
               </div>
               <h3 className="text-xl font-bold text-foreground mb-2">DEA i.on</h3>
-              <p className="text-sm text-muted-foreground mb-6">Desfibrilador Externo Automático</p>
+              <p className="text-sm text-muted-foreground mb-6">Desfibrilador Externo Autom├ítico</p>
               <div className="space-y-3">
                 {[
-                  { icon: ShieldCheck, text: 'Certificado ANVISA — uso leigo' },
+                  { icon: ShieldCheck, text: 'Certificado ANVISA ÔÇö uso leigo' },
                   { icon: HeartPulse, text: 'Feedback de RCP com display' },
                   { icon: MapPin, text: 'Verificado e ativo no mapa' },
                 ].map(({ icon: Icon, text }) => (
