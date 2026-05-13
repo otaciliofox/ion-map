@@ -20,7 +20,7 @@ export function MapSection({ establishments }: MapSectionProps) {
           </p>
         </div>
 
-        <div className="rounded-2xl shadow-xl border border-border overflow-hidden" style={{ height: '600px' }}>
+        <div className="rounded-2xl shadow-xl border border-border overflow-hidden isolate" style={{ height: '600px' }}>
           <Map establishments={establishments} />
         </div>
       </div>

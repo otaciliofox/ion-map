@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import type { Establishment } from '@/lib/types'
-import { MapPin, Phone, Navigation, Search, X, Building2, Map, Sun, Moon } from 'lucide-react'
+import { MapPin, Phone, Navigation, Search, X, Building2, Map, Palette } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase'
+import { useTheme } from 'next-themes'
 import 'leaflet/dist/leaflet.css'
 
 // Icons
@@ -133,7 +134,18 @@ export function MapComponent({ establishments }: MapComponentProps) {
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
   const [highlightEst, setHighlightEst] = useState<Establishment | null>(null)
-  const [theme, setTheme] = useState<ThemeKey>('osm')
+  // Sync map theme with site theme (next-themes)
+  const { resolvedTheme } = useTheme()
+  const defaultMapTheme: ThemeKey = resolvedTheme === 'light' ? 'light' : 'dark'
+  const [theme, setTheme] = useState<ThemeKey>(defaultMapTheme)
+
+  // Auto-update map theme when site theme changes (unless user manually picked)
+  const [userOverrode, setUserOverrode] = useState(false)
+  useEffect(() => {
+    if (!userOverrode) {
+      setTheme(resolvedTheme === 'light' ? 'light' : 'dark')
+    }
+  }, [resolvedTheme, userOverrode])
   const [showThemePicker, setShowThemePicker] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -261,12 +273,12 @@ export function MapComponent({ establishments }: MapComponentProps) {
               onClick={(e) => { e.stopPropagation(); setShowThemePicker(p => !p) }}
               className="shadow-md shrink-0 bg-background/95 h-10 w-10"
               title="Tema do mapa">
-              {theme === 'dark' ? <Moon className="w-4 h-4" /> : theme === 'light' ? <Sun className="w-4 h-4" /> : <Map className="w-4 h-4" />}
+              <Palette className="w-4 h-4" />
             </Button>
             {showThemePicker && (
               <div className="absolute right-0 top-12 bg-background border border-border rounded-lg shadow-lg py-1 z-[1100] min-w-[130px]">
                 {(Object.entries(THEMES) as [ThemeKey, typeof THEMES[ThemeKey]][]).map(([key, t]) => (
-                  <button key={key} onClick={() => { setTheme(key); setShowThemePicker(false) }}
+                  <button key={key} onClick={() => { setTheme(key); setUserOverrode(true); setShowThemePicker(false) }}
                     className={`w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors ${theme === key ? 'text-primary font-medium' : 'text-foreground'}`}>
                     {t.label}
                   </button>
