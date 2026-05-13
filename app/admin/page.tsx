@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Header } from '@/components/layout/header'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useRouter } from 'next/navigation'
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
-  HeartPulse, Users, Building2, CheckCircle2, Clock, XCircle, Loader2, RefreshCw,
+  HeartPulse, Users, Building2, CheckCircle2, Clock, XCircle, Loader2, RefreshCw, Search, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
 type Role = 'client' | 'supervisor' | 'admin'
@@ -27,6 +27,8 @@ const STATUS_CFG: Record<EstStatus, { label: string; variant: 'default' | 'succe
   inactive: { label: 'Inativo', variant: 'destructive' },
 }
 
+const PAGE_SIZE = 10
+
 export default function AdminPage() {
   const { user, profile, loading } = useAuth()
   const router = useRouter()
@@ -35,6 +37,15 @@ export default function AdminPage() {
   const [dataLoading, setDataLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'users' | 'establishments'>('users')
+
+  // Search & filter state
+  const [userSearch, setUserSearch] = useState('')
+  const [estSearch, setEstSearch] = useState('')
+  const [estStatusFilter, setEstStatusFilter] = useState<'all' | EstStatus>('all')
+
+  // Pagination state
+  const [userPage, setUserPage] = useState(1)
+  const [estPage, setEstPage] = useState(1)
 
   useEffect(() => {
     if (loading) return
@@ -58,6 +69,32 @@ export default function AdminPage() {
     if (!loading && user && profile?.role === 'admin') loadData()
   }, [loading, user, profile, loadData])
 
+  // Reset pages on search/filter change
+  useEffect(() => { setUserPage(1) }, [userSearch])
+  useEffect(() => { setEstPage(1) }, [estSearch, estStatusFilter])
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.toLowerCase().trim()
+    if (!q) return profiles
+    return profiles.filter(p => p.name?.toLowerCase().includes(q))
+  }, [profiles, userSearch])
+
+  const filteredEsts = useMemo(() => {
+    const q = estSearch.toLowerCase().trim()
+    return establishments.filter(e => {
+      const matchesSearch = !q ||
+        e.name.toLowerCase().includes(q) ||
+        (e.city?.toLowerCase().includes(q) ?? false)
+      const matchesStatus = estStatusFilter === 'all' || e.status === estStatusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [establishments, estSearch, estStatusFilter])
+
+  const userTotalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
+  const estTotalPages = Math.max(1, Math.ceil(filteredEsts.length / PAGE_SIZE))
+  const pagedUsers = filteredUsers.slice((userPage - 1) * PAGE_SIZE, userPage * PAGE_SIZE)
+  const pagedEsts = filteredEsts.slice((estPage - 1) * PAGE_SIZE, estPage * PAGE_SIZE)
+
   async function changeRole(profileId: string, newRole: Role) {
     setUpdatingId(profileId)
     const supabase = createClient()
@@ -76,7 +113,9 @@ export default function AdminPage() {
     const { error } = await supabase.from('establishments').update(updateData).eq('id', estId)
     if (!error) {
       setEstablishments(prev => prev.map(e =>
-        e.id === estId ? { ...e, status: newStatus, ...(newStatus === 'active' ? { approved_at: now, approved_by: user?.id ?? null } : {}) } : e
+        e.id === estId
+          ? { ...e, status: newStatus, ...(newStatus === 'active' ? { approved_at: now, approved_by: user?.id ?? null } : {}) }
+          : e
       ))
     }
     setUpdatingId(null)
@@ -147,7 +186,19 @@ export default function AdminPage() {
           </div>
         ) : tab === 'users' ? (
           <Card>
-            <CardHeader><CardTitle>Gerenciar Usuarios</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Gerenciar Usuarios</CardTitle>
+              <div className="relative mt-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome..."
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  className="w-full sm:w-72 pl-9 pr-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -160,7 +211,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {profiles.map(p => {
+                    {pagedUsers.map(p => {
                       const { label, variant } = ROLE_CFG[p.role]
                       const isUpd = updatingId === p.id
                       return (
@@ -186,14 +237,62 @@ export default function AdminPage() {
                         </tr>
                       )
                     })}
+                    {pagedUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                          Nenhum usuario encontrado.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              {userTotalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {filteredUsers.length} usuario(s) &middot; Pagina {userPage} de {userTotalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                      disabled={userPage === 1} className="gap-1">
+                      <ChevronLeft className="w-4 h-4" /> Anterior
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
+                      disabled={userPage === userTotalPages} className="gap-1">
+                      Proximo <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
           <Card>
-            <CardHeader><CardTitle>Gerenciar Estabelecimentos</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Gerenciar Estabelecimentos</CardTitle>
+              <div className="flex flex-col sm:flex-row gap-3 mt-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome ou cidade..."
+                    value={estSearch}
+                    onChange={e => setEstSearch(e.target.value)}
+                    className="w-full sm:w-72 pl-9 pr-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+                <select
+                  value={estStatusFilter}
+                  onChange={e => setEstStatusFilter(e.target.value as 'all' | EstStatus)}
+                  className="px-3 py-2 text-sm rounded-md border border-input bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="all">Todos os status</option>
+                  <option value="active">Ativo</option>
+                  <option value="pending">Pendente</option>
+                  <option value="inactive">Inativo</option>
+                </select>
+              </div>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -207,7 +306,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {establishments.map(est => {
+                    {pagedEsts.map(est => {
                       const { label, variant } = STATUS_CFG[est.status]
                       const isUpd = updatingId === est.id
                       return (
@@ -236,9 +335,33 @@ export default function AdminPage() {
                         </tr>
                       )
                     })}
+                    {pagedEsts.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                          Nenhum estabelecimento encontrado.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              {estTotalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {filteredEsts.length} estabelecimento(s) &middot; Pagina {estPage} de {estTotalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setEstPage(p => Math.max(1, p - 1))}
+                      disabled={estPage === 1} className="gap-1">
+                      <ChevronLeft className="w-4 h-4" /> Anterior
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setEstPage(p => Math.min(estTotalPages, p + 1))}
+                      disabled={estPage === estTotalPages} className="gap-1">
+                      Proximo <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

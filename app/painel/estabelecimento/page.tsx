@@ -3,7 +3,10 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Phone, Mail, Clock, CheckCircle2, XCircle, Upload, HeartPulse } from 'lucide-react'
+import {
+  ArrowLeft, MapPin, Phone, Mail, Clock, CheckCircle2, XCircle,
+  Upload, HeartPulse, Save, Loader2, AlertTriangle,
+} from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -13,9 +16,20 @@ import { createClient } from '@/lib/supabase'
 import type { Establishment } from '@/lib/types'
 
 const STATUS_CONFIG = {
-  active:   { label: 'Ativo',    variant: 'success' as const,     icon: CheckCircle2 },
-  pending:  { label: 'Pendente', variant: 'warning' as const,     icon: Clock },
-  inactive: { label: 'Inativo',  variant: 'destructive' as const, icon: XCircle },
+  active:   { label: 'Ativo',      variant: 'success' as const,     icon: CheckCircle2 },
+  pending:  { label: 'Pendente',   variant: 'warning' as const,     icon: Clock },
+  inactive: { label: 'Rejeitado',  variant: 'destructive' as const, icon: XCircle },
+}
+
+interface EditForm {
+  name: string
+  description: string
+  address: string
+  city: string
+  state: string
+  zip_code: string
+  contact_phone: string
+  contact_email: string
 }
 
 function EstabelecimentoDetail() {
@@ -26,6 +40,12 @@ function EstabelecimentoDetail() {
   const [est, setEst] = useState<Establishment | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [form, setForm] = useState<EditForm>({
+    name: '', description: '', address: '', city: '',
+    state: '', zip_code: '', contact_phone: '', contact_email: '',
+  })
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth/login')
@@ -40,7 +60,20 @@ function EstabelecimentoDetail() {
         .select('*, establishment_photos(*)')
         .eq('id', id)
         .maybeSingle()
-      setEst(data as Establishment | null)
+      const estData = data as Establishment | null
+      setEst(estData)
+      if (estData) {
+        setForm({
+          name: estData.name ?? '',
+          description: estData.description ?? '',
+          address: estData.address ?? '',
+          city: estData.city ?? '',
+          state: estData.state ?? '',
+          zip_code: estData.zip_code ?? '',
+          contact_phone: estData.contact_phone ?? '',
+          contact_email: estData.contact_email ?? '',
+        })
+      }
       setLoading(false)
     }
     load()
@@ -49,7 +82,7 @@ function EstabelecimentoDetail() {
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>, photoType: 'place' | 'equipment') {
     const file = e.target.files?.[0]
     if (!file || !user || !est) return
-    if (file.size > 5 * 1024 * 1024) { alert('Foto deve ter no máximo 5MB'); return }
+    if (file.size > 5 * 1024 * 1024) { alert('Foto deve ter no maximo 5MB'); return }
     setUploading(true)
     const supabase = createClient()
     const path = `${user.id}/${est.id}/${photoType}-${Date.now()}.jpg`
@@ -65,6 +98,42 @@ function EstabelecimentoDetail() {
     setUploading(false)
   }
 
+  async function handleSaveResubmit() {
+    if (!est || !user) return
+    setSaving(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('establishments').update({
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      address: form.address.trim(),
+      city: form.city.trim() || null,
+      state: form.state.trim() || null,
+      zip_code: form.zip_code.trim() || null,
+      contact_phone: form.contact_phone.trim() || null,
+      contact_email: form.contact_email.trim() || null,
+      status: 'pending',
+      rejection_reason: null,
+    }).eq('id', est.id)
+    if (!error) {
+      setEst(prev => prev ? {
+        ...prev,
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        address: form.address.trim(),
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        zip_code: form.zip_code.trim() || null,
+        contact_phone: form.contact_phone.trim() || null,
+        contact_email: form.contact_email.trim() || null,
+        status: 'pending',
+        rejection_reason: null,
+      } : null)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 5000)
+    }
+    setSaving(false)
+  }
+
   if (authLoading || loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <HeartPulse className="w-10 h-10 text-primary animate-heartbeat" />
@@ -76,7 +145,7 @@ function EstabelecimentoDetail() {
       <Header />
       <main className="flex-1 pt-16 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <p className="text-muted-foreground">Estabelecimento não encontrado.</p>
+          <p className="text-muted-foreground">Estabelecimento nao encontrado.</p>
           <Link href="/painel"><Button variant="outline">Voltar ao painel</Button></Link>
         </div>
       </main>
@@ -87,6 +156,8 @@ function EstabelecimentoDetail() {
   const placePhoto = est.establishment_photos?.find(p => p.photo_type === 'place')
   const equipPhoto = est.establishment_photos?.find(p => p.photo_type === 'equipment')
   const hasBothPhotos = !!(placePhoto && equipPhoto)
+  const isInactive = est.status === 'inactive'
+  const canUploadPhotos = est.status === 'pending' || est.status === 'inactive'
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -105,34 +176,151 @@ function EstabelecimentoDetail() {
             </div>
           </div>
 
+          {/* Rejected banner */}
+          {isInactive && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400 space-y-1">
+              <p className="font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Seu estabelecimento foi rejeitado. Corrija as informacoes abaixo e reenvie para aprovacao.
+              </p>
+              {est.rejection_reason && (
+                <p className="mt-1"><strong>Motivo:</strong> {est.rejection_reason}</p>
+              )}
+            </div>
+          )}
+
+          {/* Save success */}
+          {saveSuccess && (
+            <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Informacoes atualizadas! Seu estabelecimento foi reenviado para aprovacao.
+            </div>
+          )}
+
+          {/* Pending banners */}
           {est.status === 'pending' && !hasBothPhotos && (
             <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-600 dark:text-yellow-400">
-              ⚠️ <strong>Ação necessária:</strong> Envie as fotos do local e do equipamento para aprovação.
+              Acao necessaria: Envie as fotos do local e do equipamento para aprovacao.
             </div>
           )}
           {est.status === 'pending' && hasBothPhotos && (
             <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm text-blue-600 dark:text-blue-400">
-              ✓ Fotos enviadas. Aguardando aprovação do supervisor.
-            </div>
-          )}
-          {est.status === 'inactive' && est.rejection_reason && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-              ✗ <strong>Reprovado:</strong> {est.rejection_reason}
+              Fotos enviadas. Aguardando aprovacao do supervisor.
             </div>
           )}
 
-          <Card>
-            <CardHeader><CardTitle>Informações</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {est.description && <p className="text-muted-foreground">{est.description}</p>}
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{est.address}{est.city ? `, ${est.city} - ${est.state}` : ''}</span>
-              </div>
-              {est.contact_phone && <div className="flex items-center gap-2 text-muted-foreground"><Phone className="w-4 h-4" /><span>{est.contact_phone}</span></div>}
-              {est.contact_email && <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-4 h-4" /><span>{est.contact_email}</span></div>}
-            </CardContent>
-          </Card>
+          {/* Edit form for inactive, info card for others */}
+          {isInactive ? (
+            <Card>
+              <CardHeader><CardTitle>Corrigir Informacoes</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-sm font-medium">Nome *</label>
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-sm font-medium">Descricao</label>
+                    <textarea
+                      value={form.description}
+                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                      rows={3}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-sm font-medium">Endereco *</label>
+                    <input
+                      type="text"
+                      value={form.address}
+                      onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Cidade</label>
+                    <input
+                      type="text"
+                      value={form.city}
+                      onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Estado (UF)</label>
+                    <input
+                      type="text"
+                      value={form.state}
+                      onChange={e => setForm(f => ({ ...f, state: e.target.value }))}
+                      maxLength={2}
+                      placeholder="UF"
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">CEP</label>
+                    <input
+                      type="text"
+                      value={form.zip_code}
+                      onChange={e => setForm(f => ({ ...f, zip_code: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Telefone</label>
+                    <input
+                      type="tel"
+                      value={form.contact_phone}
+                      onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">E-mail de contato</label>
+                    <input
+                      type="email"
+                      value={form.contact_email}
+                      onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSaveResubmit}
+                  disabled={saving || !form.name.trim() || !form.address.trim()}
+                  className="w-full gap-2">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Salvar e Reenviar para Aprovacao
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader><CardTitle>Informacoes</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {est.description && <p className="text-muted-foreground">{est.description}</p>}
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>{est.address}{est.city ? `, ${est.city} - ${est.state}` : ''}</span>
+                </div>
+                {est.contact_phone && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="w-4 h-4" /><span>{est.contact_phone}</span>
+                  </div>
+                )}
+                {est.contact_email && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="w-4 h-4" /><span>{est.contact_email}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>Fotos do Cadastro</CardTitle></CardHeader>
@@ -150,7 +338,7 @@ function EstabelecimentoDetail() {
                       ) : (
                         <div className="w-full h-48 rounded-lg border-2 border-dashed border-border flex items-center justify-center text-muted-foreground text-sm">Sem foto</div>
                       )}
-                      {est.status === 'pending' && (
+                      {canUploadPhotos && (
                         <label className="cursor-pointer block">
                           <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, type)} disabled={uploading} />
                           <Button variant="outline" size="sm" className="w-full gap-2 pointer-events-none">

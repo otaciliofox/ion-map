@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, MapPin, Clock, CheckCircle2, XCircle, Building2 } from 'lucide-react'
+import { Plus, MapPin, Clock, CheckCircle2, XCircle, Building2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,9 +12,9 @@ import type { Establishment, Profile } from '@/lib/types'
 interface Props { profile: Profile }
 
 const STATUS_CONFIG = {
-  active: { label: 'Ativo', variant: 'success' as const, icon: CheckCircle2 },
-  pending: { label: 'Pendente', variant: 'warning' as const, icon: Clock },
-  inactive: { label: 'Inativo', variant: 'destructive' as const, icon: XCircle },
+  active:   { label: 'Ativo',      variant: 'success' as const,     icon: CheckCircle2 },
+  pending:  { label: 'Pendente',   variant: 'warning' as const,     icon: Clock },
+  inactive: { label: 'Rejeitado',  variant: 'destructive' as const, icon: XCircle },
 }
 
 export function ClientDashboard({ profile }: Props) {
@@ -41,7 +41,7 @@ export function ClientDashboard({ profile }: Props) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">
-            Olá, {profile.name?.split(' ')[0] ?? 'usuário'} 👋
+            Ola, {profile.name?.split(' ')[0] ?? 'usuario'} 👋
           </h1>
           <p className="text-muted-foreground mt-1">Gerencie seus estabelecimentos no ion-map</p>
         </div>
@@ -98,6 +98,7 @@ export function ClientDashboard({ profile }: Props) {
               {establishments.map(est => {
                 const { label, variant } = STATUS_CONFIG[est.status]
                 const hasPhotos = (est.establishment_photos?.length ?? 0) >= 2
+                const isInactive = est.status === 'inactive'
                 return (
                   <div key={est.id} className="flex items-start gap-4 p-4 rounded-xl border border-border hover:bg-muted/30 transition-colors">
                     <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
@@ -113,7 +114,7 @@ export function ClientDashboard({ profile }: Props) {
                         <h3 className="font-semibold text-foreground truncate">{est.name}</h3>
                         <Badge variant={variant}>{label}</Badge>
                         {!hasPhotos && est.status === 'pending' && (
-                          <Badge variant="warning">⚠ Fotos pendentes</Badge>
+                          <Badge variant="warning">Fotos pendentes</Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
@@ -125,7 +126,16 @@ export function ClientDashboard({ profile }: Props) {
                       )}
                     </div>
                     <Link href={`/painel/estabelecimento?id=${est.id}`}>
-                      <Button variant="ghost" size="sm">Ver</Button>
+                      {isInactive ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1 border-yellow-500/50 text-yellow-600 hover:bg-yellow-500/10 dark:text-yellow-400">
+                          <AlertTriangle className="w-3 h-3" /> Corrigir
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm">Ver</Button>
+                      )}
                     </Link>
                   </div>
                 )

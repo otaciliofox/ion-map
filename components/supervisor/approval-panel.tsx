@@ -7,17 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
-  CheckCircle2, XCircle, Clock, MapPin, Calendar, User, ZoomIn, Loader2, AlertCircle,
+  CheckCircle2, XCircle, Clock, MapPin, Calendar, User, ZoomIn, Loader2, AlertCircle, AlertTriangle,
 } from 'lucide-react'
 
 interface EstWithProfile extends Omit<Establishment, 'establishment_photos'> {
   establishment_photos: EstablishmentPhoto[]
 }
-interface Stats { pending: number; approvedToday: number; totalActive: number }
+interface Stats { pending: number; rejected: number; totalActive: number }
 
 export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
-  const [items, setItems] = useState<EstWithProfile[]>([])
-  const [stats, setStats] = useState<Stats>({ pending: 0, approvedToday: 0, totalActive: 0 })
+  const [activeTab, setActiveTab] = useState<'pending' | 'rejected'>('pending')
+  const [pendingItems, setPendingItems] = useState<EstWithProfile[]>([])
+  const [rejectedItems, setRejectedItems] = useState<EstWithProfile[]>([])
+  const [stats, setStats] = useState<Stats>({ pending: 0, rejected: 0, totalActive: 0 })
   const [loading, setLoading] = useState(true)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -28,18 +30,20 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const [estRes, allRes] = await Promise.all([
+      const [pendingRes, rejectedRes, allRes] = await Promise.all([
         supabase.from('establishments').select('*, establishment_photos(*)')
           .eq('status', 'pending').order('created_at', { ascending: true }),
-        supabase.from('establishments').select('status, approved_at'),
+        supabase.from('establishments').select('*, establishment_photos(*)')
+          .eq('status', 'inactive').order('created_at', { ascending: false }),
+        supabase.from('establishments').select('status'),
       ])
-      if (estRes.data) setItems(estRes.data as EstWithProfile[])
+      if (pendingRes.data) setPendingItems(pendingRes.data as EstWithProfile[])
+      if (rejectedRes.data) setRejectedItems(rejectedRes.data as EstWithProfile[])
       if (allRes.data) {
-        const all = allRes.data as { status: string; approved_at: string | null }[]
-        const today = new Date().toISOString().slice(0, 10)
+        const all = allRes.data as { status: string }[]
         setStats({
           pending: all.filter(e => e.status === 'pending').length,
-          approvedToday: all.filter(e => e.approved_at?.startsWith(today) ?? false).length,
+          rejected: all.filter(e => e.status === 'inactive').length,
           totalActive: all.filter(e => e.status === 'active').length,
         })
       }
@@ -58,8 +62,8 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
       await supabase.from('approval_logs').insert({
         establishment_id: est.id, actor_id: supervisorId, action: 'approved', comment: null,
       })
-      setItems(p => p.filter(e => e.id !== est.id))
-      setStats(p => ({ ...p, pending: p.pending - 1, approvedToday: p.approvedToday + 1, totalActive: p.totalActive + 1 }))
+      setPendingItems(p => p.filter(e => e.id !== est.id))
+      setStats(p => ({ ...p, pending: p.pending - 1, totalActive: p.totalActive + 1 }))
     }
     setActionId(null)
   }
@@ -74,8 +78,10 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
       await supabase.from('approval_logs').insert({
         establishment_id: est.id, actor_id: supervisorId, action: 'rejected', comment: rejectReason,
       })
-      setItems(p => p.filter(e => e.id !== est.id))
-      setStats(p => ({ ...p, pending: p.pending - 1 }))
+      const rejectedEst: EstWithProfile = { ...est, status: 'inactive', rejection_reason: rejectReason }
+      setPendingItems(p => p.filter(e => e.id !== est.id))
+      setRejectedItems(p => [rejectedEst, ...p])
+      setStats(p => ({ ...p, pending: p.pending - 1, rejected: p.rejected + 1 }))
       setRejectingId(null); setRejectReason(''); setRejectError('')
     }
     setActionId(null)
@@ -87,12 +93,15 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
     </div>
   )
 
+  const items = activeTab === 'pending' ? pendingItems : rejectedItems
+
   return (
     <div className="space-y-6">
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { icon: Clock, color: 'text-yellow-500', val: stats.pending, label: 'Pendentes' },
-          { icon: CheckCircle2, color: 'text-green-500', val: stats.approvedToday, label: 'Aprovados Hoje' },
+          { icon: XCircle, color: 'text-destructive', val: stats.rejected, label: 'Rejeitados' },
           { icon: MapPin, color: 'text-primary', val: stats.totalActive, label: 'Total Ativos' },
         ].map(({ icon: Icon, color, val, label }) => (
           <Card key={label}>
@@ -105,12 +114,35 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
         ))}
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-border">
+        {([
+          { id: 'pending' as const, label: `Pendentes (${pendingItems.length})` },
+          { id: 'rejected' as const, label: `Rejeitados (${rejectedItems.length})` },
+        ]).map(({ id, label }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {items.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center space-y-3">
             <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-            <p className="text-lg font-semibold">Fila vazia!</p>
-            <p className="text-muted-foreground text-sm">Nenhum estabelecimento aguardando aprovacao.</p>
+            <p className="text-lg font-semibold">
+              {activeTab === 'pending' ? 'Fila vazia!' : 'Nenhum rejeitado!'}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              {activeTab === 'pending'
+                ? 'Nenhum estabelecimento aguardando aprovacao.'
+                : 'Nenhum estabelecimento rejeitado no momento.'}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -120,6 +152,7 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
             const equipPhoto = est.establishment_photos?.find(p => p.photo_type === 'equipment')
             const isRejecting = rejectingId === est.id
             const isLoading = actionId === est.id
+
             return (
               <Card key={est.id} className="overflow-hidden">
                 <CardContent className="p-6 space-y-4">
@@ -131,14 +164,36 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
                       </p>
                       <p className="text-sm text-muted-foreground">{est.city}, {est.state}</p>
                     </div>
-                    <Badge variant="warning" className="shrink-0">
-                      <Clock className="w-3 h-3 mr-1" />Pendente
-                    </Badge>
+                    {activeTab === 'pending' ? (
+                      <Badge variant="warning" className="shrink-0">
+                        <Clock className="w-3 h-3 mr-1" />Pendente
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="shrink-0">
+                        <XCircle className="w-3 h-3 mr-1" />Rejeitado
+                      </Badge>
+                    )}
                   </div>
+
+                  {activeTab === 'rejected' && est.rejection_reason && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400 space-y-1">
+                      <p className="font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Motivo da rejeicao:
+                      </p>
+                      <p>{est.rejection_reason}</p>
+                    </div>
+                  )}
+
+                  {activeTab === 'rejected' && (
+                    <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-400 flex items-center gap-2">
+                      <Clock className="w-4 h-4 flex-shrink-0" />
+                      Aguardando correcao do responsavel
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <User className="w-3 h-3" />{est.contact_email ?? est.contact_phone ?? '—'}
+                      <User className="w-3 h-3" />{est.contact_email ?? est.contact_phone ?? '---'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />{new Date(est.created_at).toLocaleDateString('pt-BR')}
@@ -169,42 +224,49 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
                     ))}
                   </div>
 
-                  {isRejecting && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Motivo da Rejeicao *</p>
-                      <textarea value={rejectReason}
-                        onChange={e => { setRejectReason(e.target.value); setRejectError('') }}
-                        placeholder="Descreva o motivo..." rows={3}
-                        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none" />
-                      {rejectError && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="w-3 h-3" />{rejectError}</p>}
-                    </div>
+                  {activeTab === 'pending' && (
+                    <>
+                      {isRejecting && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Motivo da Rejeicao *</p>
+                          <textarea value={rejectReason}
+                            onChange={e => { setRejectReason(e.target.value); setRejectError('') }}
+                            placeholder="Descreva o motivo..." rows={3}
+                            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none" />
+                          {rejectError && (
+                            <p className="text-xs text-destructive flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />{rejectError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex gap-3">
+                        {!isRejecting ? (
+                          <>
+                            <Button onClick={() => approve(est)} disabled={isLoading}
+                              className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white">
+                              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                              Aprovar
+                            </Button>
+                            <Button variant="destructive" onClick={() => setRejectingId(est.id)} disabled={isLoading} className="flex-1 gap-2">
+                              <XCircle className="w-4 h-4" />Rejeitar
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="destructive" onClick={() => reject(est)} disabled={isLoading} className="flex-1 gap-2">
+                              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                              Confirmar Rejeicao
+                            </Button>
+                            <Button variant="outline" onClick={() => { setRejectingId(null); setRejectReason(''); setRejectError('') }}
+                              disabled={isLoading} className="flex-1">
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </>
                   )}
-
-                  <div className="flex gap-3">
-                    {!isRejecting ? (
-                      <>
-                        <Button onClick={() => approve(est)} disabled={isLoading}
-                          className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white">
-                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                          Aprovar
-                        </Button>
-                        <Button variant="destructive" onClick={() => setRejectingId(est.id)} disabled={isLoading} className="flex-1 gap-2">
-                          <XCircle className="w-4 h-4" />Rejeitar
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button variant="destructive" onClick={() => reject(est)} disabled={isLoading} className="flex-1 gap-2">
-                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                          Confirmar Rejeicao
-                        </Button>
-                        <Button variant="outline" onClick={() => { setRejectingId(null); setRejectReason(''); setRejectError('') }}
-                          disabled={isLoading} className="flex-1">
-                          Cancelar
-                        </Button>
-                      </>
-                    )}
-                  </div>
                 </CardContent>
               </Card>
             )
