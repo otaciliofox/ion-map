@@ -10,9 +10,8 @@ import {
   CheckCircle2, XCircle, Clock, MapPin, Calendar, User, ZoomIn, Loader2, AlertCircle,
 } from 'lucide-react'
 
-interface EstWithProfile extends Omit<Establishment, 'establishment_photos' | 'profiles'> {
+interface EstWithProfile extends Omit<Establishment, 'establishment_photos'> {
   establishment_photos: EstablishmentPhoto[]
-  profiles: { name: string | null } | null
 }
 interface Stats { pending: number; approvedToday: number; totalActive: number }
 
@@ -30,7 +29,7 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
     async function load() {
       const supabase = createClient()
       const [estRes, allRes] = await Promise.all([
-        supabase.from('establishments').select('*, establishment_photos(*), profiles(name)')
+        supabase.from('establishments').select('*, establishment_photos(*)')
           .eq('status', 'pending').order('created_at', { ascending: true }),
         supabase.from('establishments').select('status, approved_at'),
       ])
@@ -139,7 +138,7 @@ export function ApprovalPanel({ supervisorId }: { supervisorId: string }) {
 
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <User className="w-3 h-3" />{est.profiles?.name ?? 'Desconhecido'}
+                      <User className="w-3 h-3" />{est.contact_email ?? est.contact_phone ?? '—'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />{new Date(est.created_at).toLocaleDateString('pt-BR')}
