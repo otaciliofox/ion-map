@@ -124,7 +124,7 @@ export function ClientDashboard({ profile }: Props) {
                         <p className="text-xs text-destructive mt-1">Motivo: {est.rejection_reason}</p>
                       )}
                     </div>
-                    <Link href={`/painel/estabelecimento/${est.id}`}>
+                    <Link href={`/painel/estabelecimento?id=${est.id}`}>
                       <Button variant="ghost" size="sm">Ver</Button>
                     </Link>
                   </div>
