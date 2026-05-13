@@ -13,31 +13,72 @@ export function useAuth() {
   useEffect(() => {
     const supabase = createClient()
 
-    async function fetchProfile(u: User) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', u.id)
-        .single()
+    // Safety timeout — never stay loading forever
+    const timeout = setTimeout(() => setLoading(false), 5000)
 
-      if (data) {
-        setProfile(data as Profile)
-      } else {
-        // Profile not created by trigger yet — upsert manually
-        await supabase.from('profiles').upsert({
+    async function fetchProfile(u: User) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', u.id)
+          .maybeSingle()
+
+        if (data) {
+          setProfile(data as Profile)
+          setLoading(false)
+          return
+        }
+
+        // RLS may block read before insert — try upsert first
+        const { error: upsertError } = await supabase.from('profiles').upsert({
           id: u.id,
           name: u.user_metadata?.full_name || u.user_metadata?.name || null,
           avatar_url: u.user_metadata?.avatar_url || null,
           role: 'client',
+        }, { onConflict: 'id' })
+
+        if (!upsertError) {
+          const { data: created } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', u.id)
+            .maybeSingle()
+          setProfile((created as Profile | null) ?? {
+            id: u.id,
+            name: u.user_metadata?.full_name || null,
+            phone: null,
+            role: 'client',
+            avatar_url: u.user_metadata?.avatar_url || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        } else {
+          // Fallback: build profile from user metadata even if DB fails
+          setProfile({
+            id: u.id,
+            name: u.user_metadata?.full_name || u.email || null,
+            phone: null,
+            role: 'client',
+            avatar_url: u.user_metadata?.avatar_url || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+      } catch {
+        // Always unblock loading
+        setProfile({
+          id: u.id,
+          name: u.user_metadata?.full_name || null,
+          phone: null,
+          role: 'client',
+          avatar_url: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
-        const { data: created } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', u.id)
-          .single()
-        setProfile(created as Profile | null)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     async function init() {
@@ -56,7 +97,10 @@ export function useAuth() {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function signOut() {
