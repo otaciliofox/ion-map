@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   title: 'ion-map — Encontre DEA i.on próximos a você',
   description: 'Mapa de estabelecimentos verificados com desfibrilador DEA i.on da Instramed. Salve vidas localizando o DEA mais próximo.',
   keywords: ['DEA', 'desfibrilador', 'i.on', 'Instramed', 'mapa', 'emergência cardíaca', 'AED'],
+  icons: {
+    icon: [
+      { url: '/ion-map/favicon.svg', type: 'image/svg+xml' },
+      { url: '/ion-map/favicon.ico' },
+    ],
+    apple: '/ion-map/favicon.svg',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -18,7 +18,16 @@ export default function PainelPage() {
     else if (profile?.role === 'supervisor') router.replace('/supervisor')
   }, [user, profile, loading, router])
 
-  if (loading || !user || !profile) return (
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <HeartPulse className="w-10 h-10 text-primary animate-heartbeat" />
+    </div>
+  )
+
+  if (!user) return null
+
+  // Profile still loading or role-based redirect pending
+  if (!profile) return (
     <div className="min-h-screen flex items-center justify-center">
       <HeartPulse className="w-10 h-10 text-primary animate-heartbeat" />
     </div>

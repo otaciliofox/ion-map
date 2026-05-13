@@ -13,16 +13,37 @@ export function useAuth() {
   useEffect(() => {
     const supabase = createClient()
 
-    async function fetchProfile(userId: string) {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-      setProfile(data as Profile | null)
+    async function fetchProfile(u: User) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', u.id)
+        .single()
+
+      if (data) {
+        setProfile(data as Profile)
+      } else {
+        // Profile not created by trigger yet — upsert manually
+        await supabase.from('profiles').upsert({
+          id: u.id,
+          name: u.user_metadata?.full_name || u.user_metadata?.name || null,
+          avatar_url: u.user_metadata?.avatar_url || null,
+          role: 'client',
+        })
+        const { data: created } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', u.id)
+          .single()
+        setProfile(created as Profile | null)
+      }
       setLoading(false)
     }
 
     async function init() {
       const { data } = await supabase.auth.getUser()
       setUser(data.user)
-      if (data.user) await fetchProfile(data.user.id)
+      if (data.user) await fetchProfile(data.user)
       else setLoading(false)
     }
     init()
@@ -30,7 +51,7 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event: AuthChangeEvent, session: Session | null) => {
         setUser(session?.user ?? null)
-        if (session?.user) fetchProfile(session.user.id)
+        if (session?.user) fetchProfile(session.user)
         else { setProfile(null); setLoading(false) }
       }
     )
