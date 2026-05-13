@@ -30,6 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run database migrations
+        run: psql ${{ secrets.SUPABASE_DB_URL }} -f supabase/schema.sql
+        if: github.ref == 'refs/heads/main'
+
       - name: Build
         run: npm run build
         env:
