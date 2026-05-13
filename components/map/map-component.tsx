@@ -30,9 +30,9 @@ L.Marker.prototype.options.icon = activeIcon
 
 // Tile themes
 const THEMES = {
-  osm:  { label: 'Padrão', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
-  dark: { label: 'Escuro',  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
-  light: { label: 'Claro',  url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
+  voyager: { label: 'Navegação', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
+  dark:    { label: 'Escuro',    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
+  light:   { label: 'Claro',    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' },
 } as const
 type ThemeKey = keyof typeof THEMES
 
@@ -136,14 +136,14 @@ export function MapComponent({ establishments }: MapComponentProps) {
   const [highlightEst, setHighlightEst] = useState<Establishment | null>(null)
   // Sync map theme with site theme (next-themes)
   const { resolvedTheme } = useTheme()
-  const defaultMapTheme: ThemeKey = resolvedTheme === 'light' ? 'light' : 'dark'
+  const defaultMapTheme: ThemeKey = resolvedTheme === 'light' ? 'light' : 'voyager'
   const [theme, setTheme] = useState<ThemeKey>(defaultMapTheme)
 
   // Auto-update map theme when site theme changes (unless user manually picked)
   const [userOverrode, setUserOverrode] = useState(false)
   useEffect(() => {
     if (!userOverrode) {
-      setTheme(resolvedTheme === 'light' ? 'light' : 'dark')
+      setTheme(resolvedTheme === 'light' ? 'light' : 'voyager')
     }
   }, [resolvedTheme, userOverrode])
   const [showThemePicker, setShowThemePicker] = useState(false)
